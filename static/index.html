@@ -1,0 +1,271 @@
+
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>CSV表格数据查看</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Ant Design CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/antd@4.24.13/dist/antd.min.css">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    html, body, #container {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    #container {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: #f0f2f5;
+      position: relative;
+    }
+    .ant-table-wrapper {
+      flex: 1 1 auto;
+      overflow: auto;
+      background: #fff;
+      padding: 24px;
+      box-sizing: border-box;
+    }
+    .fullscreen-btn {
+      position: absolute;
+      top: 16px;
+      right: 32px;
+      z-index: 10;
+    }
+    .download-btn {
+      position: absolute;
+      top: 16px;
+      right: 200px;
+      z-index: 10;
+    }
+    .loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(255, 255, 255, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .blurred-content {
+      filter: blur(3px);
+    }
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      border: 5px solid #e0e0e0;
+      border-top-color: #1890ff;
+      animation: spin 1s linear infinite;
+    }
+    .loading-text {
+      margin-top: 16px;
+      font-size: 18px;
+      color: #1890ff;
+      font-weight: bold;
+    }
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="container">
+    <div class="loading-overlay" id="loadingOverlay">
+      <div class="flex flex-col items-center">
+        <div class="spinner"></div>
+        <div class="loading-text">数据加载中...</div>
+      </div>
+    </div>
+    <div id="content-container">
+      <div class="" >
+          <button class="fullscreen-btn bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-2 md:px-4 rounded-lg shadow-md transition duration-300 flex items-center " onclick="toggleFullscreen()">
+          <i class="fas fa-expand"></i>
+          <span class="px-2">全屏/退出全屏</span>
+          </button>
+          <button class="download-btn bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-2 md:px-4  rounded-lg shadow-md transition duration-300 flex items-center " onclick="downloadCSV()">
+          <i class="fas fa-download"></i>
+          <span class="px-2">下载CSV</span>
+          </button>
+      </div>
+      <div id="table-root"></div>
+    </div>
+  </div>
+  <!-- React & ReactDOM -->
+  <script src="https://cdn.jsdelivr.net/npm/react@17/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@17/umd/react-dom.production.min.js"></script>
+  <!-- Ant Design JS -->
+  <script src="https://cdn.jsdelivr.net/npm/antd@4.24.13/dist/antd.min.js"></script>
+  <!-- PapaParse for CSV parsing -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script>
+    const { Table, Input } = antd;
+    const { useState, useEffect } = React;
+    const urlParams = new URLSearchParams(window.location.search);
+    const CSV_URL = urlParams.get('dataUrl');
+    let originalData = [];
+
+    // 获取加载遮罩和内容容器元素
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const contentContainer = document.getElementById('content-container');
+
+    // 显示加载中状态
+    function showLoading() {
+      loadingOverlay.style.display = 'flex';
+      contentContainer.classList.add('blurred-content');
+    }
+
+    // 隐藏加载中状态
+    function hideLoading() {
+      loadingOverlay.style.display = 'none';
+      contentContainer.classList.remove('blurred-content');
+    }
+
+    // 初始化时显示加载状态
+    showLoading();
+
+    function App() {
+      const [data, setData] = useState([]);
+      const [columns, setColumns] = useState([]);
+      const [searchText, setSearchText] = useState('');
+      const [filteredData, setFilteredData] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        const fetchData = async () => {
+          try {
+            setLoading(true); // 开始加载
+            showLoading(); // 显示遮罩层
+           
+            const response = await fetch("/csv-render/api/get_csv?dataUrl=" + CSV_URL , {method: 'POST',});
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const csvText = (await response.json())['csv_data'];
+
+             // Parse the CSV string
+            const results = Papa.parse( csvText, {
+              header: true,     // First row is treated as header
+              skipEmptyLines: true
+            });
+            const rawData = results.data;
+            originalData = rawData;
+            setData(rawData);
+            setFilteredData(rawData);
+
+            if (rawData.length > 0) {
+                const cols = Object.keys(rawData[0]).map(key => ({
+                  title: key,
+                  dataIndex: key,
+                  key: key,
+                  sorter: (a, b) => {
+                    if (!isNaN(a[key]) && !isNaN(b[key])) {
+                      return Number(a[key]) - Number(b[key]);
+                    }
+                      return String(a[key]).localeCompare(String(b[key]));
+                  }
+                }));
+                setColumns(cols);
+            }
+          } catch(error) {
+            console.log(error);
+          } finally {
+            setLoading(false); // 设置加载状态为false
+            hideLoading(); // 隐藏遮罩层
+          }
+        }
+
+        fetchData();
+        
+      }, []);
+
+      useEffect(() => {
+        if (!searchText) {
+          setFilteredData(data);
+        } else {
+          setFilteredData(data.filter(row =>
+            Object.values(row).some(val => String(val).toLowerCase().includes(searchText.toLowerCase()))
+          ));
+        }
+      }, [searchText, data]);
+
+      return React.createElement('div', { style: { height: '100%' } },
+        React.createElement('div', { className: 'px-6 pt-2 pb-4' },
+          React.createElement(Input.Search, {
+            placeholder: '全表搜索',
+            allowClear: true,
+            onSearch: value => setSearchText(value),
+            className: 'w-80 shadow-md rounded-lg focus:ring-2 focus:ring-blue-500 transition-all duration-300',
+            style: { 
+              borderRadius: '0.5rem',
+              padding: '8px 12px',
+            }
+          })
+        ),
+        React.createElement(Table, {
+          columns: columns,
+          dataSource: filteredData,
+          rowKey: (record, idx) => idx,
+          pagination: false,
+          scroll: { x: 'max-content', y: 'calc(100vh - 180px)' },
+          bordered: true,
+          size: 'middle',
+          style: { width: '100%', height: '100%' }
+        })
+      );
+    }
+
+    function toggleFullscreen() {
+      const elem = document.getElementById('container');
+      if (!document.fullscreenElement) {
+        elem.requestFullscreen();
+      } else {
+        document.exitFullscreen();
+      }
+    }
+
+    function downloadCSV() {
+      // 获取当前数据
+      const dataToDownload = originalData;
+      
+      if (!dataToDownload || dataToDownload.length === 0) {
+        alert('暂无数据可下载');
+        return;
+      }
+      
+      // 使用PapaParse将数据转换为CSV格式
+      const csv = Papa.unparse(dataToDownload);
+      
+      // 创建Blob对象
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      
+      // 创建下载链接
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      
+      // 设置下载属性
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'housing_data.csv');
+      link.style.visibility = 'hidden';
+      
+      // 触发下载
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    }
+
+    ReactDOM.render(React.createElement(App), document.getElementById('table-root'));
+  </script>
+</body>
+</html>
