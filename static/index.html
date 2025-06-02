@@ -32,17 +32,16 @@
       padding: 24px;
       box-sizing: border-box;
     }
-    .fullscreen-btn {
-      position: absolute;
-      top: 16px;
-      right: 32px;
+    .nav-header {
+      background: #fff;
+      padding: 12px 16px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
       z-index: 10;
     }
-    .download-btn {
-      position: absolute;
-      top: 16px;
-      right: 200px;
-      z-index: 10;
+    /* 搜索框宽度控制 */
+    .search-container {
+      width: 100%;
+      max-width: 350px; /* 桌面端最大宽度 */
     }
     .loading-overlay {
       position: absolute;
@@ -78,6 +77,19 @@
         transform: rotate(360deg);
       }
     }
+    /* 手机端适配 */
+    @media (max-width: 640px) {
+      .btn-text {
+        display: none;
+      }
+      .mobile-btn {
+        padding: 8px !important;
+        min-width: 40px;
+      }
+      .search-container {
+        max-width: none; /* 手机端取消最大宽度限制 */
+      }
+    }
   </style>
 </head>
 <body>
@@ -89,15 +101,25 @@
       </div>
     </div>
     <div id="content-container">
-      <div class="" >
-          <button class="fullscreen-btn bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-2 md:px-4 rounded-lg shadow-md transition duration-300 flex items-center " onclick="toggleFullscreen()">
-          <i class="fas fa-expand"></i>
-          <span class="px-2">全屏/退出全屏</span>
-          </button>
-          <button class="download-btn bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-2 md:px-4  rounded-lg shadow-md transition duration-300 flex items-center " onclick="downloadCSV()">
-          <i class="fas fa-download"></i>
-          <span class="px-2">下载CSV</span>
-          </button>
+      <!-- 导航条布局 -->
+      <div class="nav-header">
+        <div class="flex items-center justify-between gap-4">
+          <!-- 左侧搜索框 -->
+          <div class="search-container">
+            <div id="search-container"></div>
+          </div>
+          <!-- 右侧按钮组 -->
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <button class="mobile-btn bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md transition duration-300 flex items-center" onclick="downloadCSV()">
+              <i class="fas fa-download"></i>
+              <span class="btn-text ml-2">下载CSV</span>
+            </button>
+            <button class="mobile-btn bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md transition duration-300 flex items-center" onclick="toggleFullscreen()">
+              <i class="fas fa-expand"></i>
+              <span class="btn-text ml-2">全屏</span>
+            </button>
+          </div>
+        </div>
       </div>
       <div id="table-root"></div>
     </div>
@@ -135,6 +157,20 @@
     // 初始化时显示加载状态
     showLoading();
 
+    // 搜索组件
+    function SearchComponent({ onSearch }) {
+      return React.createElement(Input.Search, {
+        placeholder: '全表搜索',
+        allowClear: true,
+        onSearch: onSearch,
+        className: 'shadow-md rounded-lg focus:ring-2 focus:ring-blue-500 transition-all duration-300',
+        style: { 
+          borderRadius: '0.5rem',
+          width: '100%'
+        }
+      });
+    }
+
     function App() {
       const [data, setData] = useState([]);
       const [columns, setColumns] = useState([]);
@@ -145,8 +181,8 @@
       useEffect(() => {
         const fetchData = async () => {
           try {
-            setLoading(true); // 开始加载
-            showLoading(); // 显示遮罩层
+            setLoading(true);
+            showLoading();
            
             const response = await fetch("/csv-render/api/get_csv?dataUrl=" + CSV_URL , {method: 'POST',});
             if (!response.ok) {
@@ -154,9 +190,8 @@
             }
             const csvText = (await response.json())['csv_data'];
 
-             // Parse the CSV string
             const results = Papa.parse( csvText, {
-              header: true,     // First row is treated as header
+              header: true,
               skipEmptyLines: true
             });
             const rawData = results.data;
@@ -181,8 +216,8 @@
           } catch(error) {
             console.log(error);
           } finally {
-            setLoading(false); // 设置加载状态为false
-            hideLoading(); // 隐藏遮罩层
+            setLoading(false);
+            hideLoading();
           }
         }
 
@@ -200,30 +235,29 @@
         }
       }, [searchText, data]);
 
-      return React.createElement('div', { style: { height: '100%' } },
-        React.createElement('div', { className: 'px-6 pt-2 pb-4' },
-          React.createElement(Input.Search, {
-            placeholder: '全表搜索',
-            allowClear: true,
-            onSearch: value => setSearchText(value),
-            className: 'w-80 shadow-md rounded-lg focus:ring-2 focus:ring-blue-500 transition-all duration-300',
-            style: { 
-              borderRadius: '0.5rem',
-              padding: '8px 12px',
-            }
-          })
-        ),
-        React.createElement(Table, {
-          columns: columns,
-          dataSource: filteredData,
-          rowKey: (record, idx) => idx,
-          pagination: false,
-          scroll: { x: 'max-content', y: 'calc(100vh - 180px)' },
-          bordered: true,
-          size: 'middle',
-          style: { width: '100%', height: '100%' }
-        })
-      );
+      // 渲染搜索组件到导航条
+      useEffect(() => {
+        const searchContainer = document.getElementById('search-container');
+        if (searchContainer) {
+          ReactDOM.render(
+            React.createElement(SearchComponent, {
+              onSearch: value => setSearchText(value)
+            }),
+            searchContainer
+          );
+        }
+      }, []);
+
+      return React.createElement(Table, {
+        columns: columns,
+        dataSource: filteredData,
+        rowKey: (record, idx) => idx,
+        pagination: false,
+        scroll: { x: 'max-content', y: 'calc(100vh - 140px)' },
+        bordered: true,
+        size: 'middle',
+        style: { width: '100%', height: '100%', margin: '16px' }
+      });
     }
 
     function toggleFullscreen() {
@@ -236,7 +270,6 @@
     }
 
     function downloadCSV() {
-      // 获取当前数据
       const dataToDownload = originalData;
       
       if (!dataToDownload || dataToDownload.length === 0) {
@@ -244,22 +277,15 @@
         return;
       }
       
-      // 使用PapaParse将数据转换为CSV格式
       const csv = Papa.unparse(dataToDownload);
-      
-      // 创建Blob对象
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      
-      // 创建下载链接
       const link = document.createElement('a');
       const url = URL.createObjectURL(blob);
       
-      // 设置下载属性
       link.setAttribute('href', url);
       link.setAttribute('download', 'housing_data.csv');
       link.style.visibility = 'hidden';
       
-      // 触发下载
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
